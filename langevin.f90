@@ -5,20 +5,22 @@ module fisica
 
     contains 
 
-    function St_slip(Kn0,T_loc, N) result(Cc)
+    function St_slip(Kn0,T_loc, Tc, N) result(Cc)
         ! allen and raabe 1982
         use mod1 
 
         integer :: N
-        real(dp) :: Kn0
+        real(dp) :: Kn0, Tc
         real(dp), dimension(:) :: T_loc
         real(dp), dimension(N) :: Cc
 
-        Cc = 1 + (Kn0 * T_loc)*(1.257 + 0.4 * exp(-1.1 * Kn0 * T_loc))
+        Cc = (1 + (Kn0 * T_loc)*(1.257 + 0.4 * exp(-1.1 /  (Kn0 * T_loc) ))) / &
+         (1 + (Kn0 * Tc)*(1.257 + 0.4 * exp(-1.1 /  (Kn0 * Tc) )))
+
 
     end function St_slip
 
-    function densitycr(rhof,rho,T_loc,N) result(drho)
+    function densitycr(rhof,T_loc,N) result(drho)
         ! corrige a densidade
         ! rho é adimensional
         use mod1
@@ -26,20 +28,20 @@ module fisica
         real(dp) :: T_loc(:), rhof, rho
         real(dp), dimension(N) :: drho
 
-        drho = (rho - rhof/T)/(rho - rhof)
+        drho = (2 - rhof/T_loc)/(2 - rhof) 
 
     end function densitycr
 
 
-    subroutine comp_F(F,GField,x,v,T_loc,St0,Pe0,Kn0,N,dt)
+    subroutine comp_F(F,GField,x,v,T_loc,Tc,St0,Pe0,Kn0,rhof,N,dt)
         use mod1
 
         real(dp), dimension(:,:), intent(inout) :: F
         real(dp), dimension(:,:), intent(in) :: x,v
         real(dp), dimension(:), intent(in) :: T_loc, Gfield
-        real(dp), intent(in) :: St0, Pe0, Kn0, dt
+        real(dp), intent(in) :: St0, Pe0, Kn0, dt, rhof,Tc 
         integer :: N
-        real(dp), dimension(N,2) :: xi 
+        real(dp) :: xi(N,2),drho(N)
 
 
         ! Gera numero aleatório e normaliza
@@ -49,9 +51,17 @@ module fisica
         xi(:,1) = xi(:,1) / sqrt(xi(:,1)**2 + xi(:,2)**2)
         xi(:,2) = xi(:,2) / sqrt(xi(:,1)**2 + xi(:,2)**2)
 
+        drho = densitycr(rhof,T_loc,N)
+
         if (Pe0 > 0) then
-            F(:,1) = (1/(St0/St_slip(Kn0,T_loc,N))) * (- v(:,1) + GField(1) + sqrt(6*T_loc/(Pe0*dt))*xi(:,1))
-            F(:,2) = (1/(St0/St_slip(Kn0,T_loc,N))) * (- v(:,2) + GField(2) + sqrt(6*T_loc/(Pe0*dt))*xi(:,2))
+            F(:,1) = (1/(St0*drho/St_slip(Kn0,T_loc,Tc,N))) * (- v(:,1) + GField(1) + sqrt(6*T_loc/(Pe0*dt))*xi(:,1))
+            F(:,2) = (1/(St0*drho/St_slip(Kn0,T_loc,Tc,N))) * (- v(:,2) + GField(2) + sqrt(6*T_loc/(Pe0*dt))*xi(:,2))
+
+            ! print*, "fb = ", sqrt(6*T_loc/(Pe0*dt))*xi(:,2)
+            ! print*, "v = ", v
+            ! print*, "St = ", St_slip(Kn0,T_loc,Tc,N)
+            ! print*, "T_loc", T_loc
+        
         else
             F(:,1) = (GField(1) + sqrt(6*T_loc/(Pe0*dt))*xi(:,1))/dt
             F(:,2) = (GField(2) + sqrt(6*T_loc/(Pe0*dt))*xi(:,2))/dt
@@ -83,6 +93,8 @@ module fisica
         character :: wall(4)
 
         x = x + v*dt 
+        ! print*, "v*dt", v*dt
+        ! read(*,*)
 
         ! condições de contorno
 
@@ -102,9 +114,9 @@ module fisica
         if (wall(1) == 'e') then 
             do i = 1,N 
                 if (x(i,2) > dimy) then 
-                    x(i,2) = 2*dimx - x(i,2)
+                    x(i,2) = 2*dimy - x(i,2)
                     v(i,2) = - v(i,2)
-                else if (x(i,1) < 0) then 
+                else if (x(i,2) < 0) then 
                     x(i,2) = - x(i,2)
                     v(i,2) = - v(i,2)
                 end if
@@ -150,7 +162,7 @@ program main
     implicit none
 
     ! Variables
-    real(dp) :: Pe0, St0, Th, Tc, Kn0, dt, t_fim, t, rhof, rho, dimx, dimy, Gfield(2),x0(2),start,finish
+    real(dp) :: Pe0, St0, Th, Tc, Kn0, dt, t_fim, t, rhof, dimx, dimy, Gfield(2),x0(2),start,finish
     real(dp),allocatable, dimension(:,:) :: v, x, F
     real(dp), allocatable, dimension(:) :: T_loc
     integer :: N, nimpre, i, ic1, cpu_countrate
@@ -212,6 +224,7 @@ program main
     call CFG_get(my_cfg,"global%GField",Gfield)
     call CFG_get(my_cfg,"global%x",x0)
     call CFG_get(my_cfg,"global%wall",wall(4)) 
+    call CFG_write(my_cfg, "settings.txt") 
 
     allocate(interv(nimpre),T_loc(N),x(N,2),v(N,2),F(N,2))
     if (x0(1) < 0) then
@@ -240,24 +253,27 @@ program main
     call system('mkdir temp') !pasta temporária para armazenar os resultados
     ! call linked2vec(malha,domx,domy,nxv,aux1)
 
+    t = 0
     call vec2csv(x,N,2,'position',0,t,nimpre,start, .true.)
     call vec2csv(v,N,2,'velocity',0,t,nimpre,start, .true.)
     
-    t = 0
+    print*, "Begin"
+    ! print*, interv
+    T_loc = Tc + x(:,1)*((Th-Tc)/dimx)
     do while (t < t_fim)
-        call comp_F(F,Gfield,x,v,T_loc,St0,Pe0,Kn0,N,dt)
+        call comp_F(F,Gfield,x,v,T_loc,Tc,St0,Pe0,Kn0,rhof,N,dt)
         call comp_v(F,v,dt,Pe0)
         call comp_x(x,v,dimx,dimy,N,dt,wall) 
 
         T_loc = Tc + x(:,1)*((Th-Tc)/dimx)
 
-        if (step == interv(jprint)) then 
+        if (jprint == interv(step+1)) then 
             call vec2csv(v,N,2,'velocity',step,t,nimpre,start)
-            call vec2csv(v,N,2,'postition',step,t,nimpre,start)
-            jprint = jprint + 1
+            call vec2csv(v,N,2,'position',step,t,nimpre,start)
+            step = step + 1
         end if 
 
-        step = step + 1
+        jprint = jprint + 1
         t = t + dt
     end do 
 

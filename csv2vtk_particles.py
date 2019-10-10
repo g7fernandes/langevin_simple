@@ -106,6 +106,7 @@ for fnum in range(0,nimpre+1):
         for linea in csv_lector:
             x[i] = linea[0]
             y[i] = linea[1]
+            i += 1
 
     while flag:
         if any('position.csv.'+str(fnum+aux1) in s for s in position_list):
@@ -120,10 +121,8 @@ for fnum in range(0,nimpre+1):
         for linea in csv_lector:
             vx[i] = linea[0]
             vy[i] = linea[1]
-            if len(linea) == 3:
-                omega[i] = linea[2]
-            
             i = i+1
+            
     zip_velocities.write(via+'/temp/velocity.csv.'+str(fnum),'velocity.csv.'+str(fnum+aux1))
     # shutil.move(via+'/temp/velocity.csv.'+str(fnum),via+'/'+folder+'/velocity.csv.'+str(fnum))
 
@@ -131,7 +130,7 @@ for fnum in range(0,nimpre+1):
     grupo = 0
     
     ini = 0      
-    fin = N-1
+    fin = N
     xs = x[ini:fin]
     ys = y[ini:fin]
     zs = z[ini:fin]
@@ -139,10 +138,8 @@ for fnum in range(0,nimpre+1):
     # vys = vy[ini:fin]
     # "Vx" : vxs, "Vy" : vys
     vel = (vx[ini:fin],vy[ini:fin],np.zeros(fin-ini))
-    tipos = tipo[ini:fin]
-    rsols = rsol[ini:fin]
     nIDs = nID[ini:fin]
-    pointsToVTK(via+'/'+folder +'/grupo'+ str(grupo) + '_' +str(fnum+aux1), xs, ys, zs, data = {"Vel" : vel , "Tipo" : tipos, "raio_solido" : rsols, "nID" : nIDs })               
+    pointsToVTK(via+'/'+folder +'/grupo'+ str(grupo) + '_' +str(fnum+aux1), xs, ys, zs, data = {"Vel" : vel , "nID" : nIDs })               
 
     grupo += 1
 
