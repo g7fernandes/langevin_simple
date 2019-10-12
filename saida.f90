@@ -95,7 +95,6 @@ module saida
                 call system_clock(ic1,cpu_countrate)
                 time = real(ic1,kind(0.d0))/real(cpu_countrate,kind(0.d0))
             if (step == 2) then 
-                print*, "AA", step
                 call system_clock(ic1,cpu_countrate)
                 time = real(ic1,kind(0.d0))/real(cpu_countrate,kind(0.d0))
                 etc = ((time - start)/real(step,kind(0.d0)) + (time-timep))*0.5*real(nimpre,kind(0.d0)) - (time - start)

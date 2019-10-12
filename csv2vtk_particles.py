@@ -48,6 +48,8 @@ while aux:
         opt = input('Overwrite? [y/n] ')
         if opt == 'y' or opt == 'Y':
             aux =False 
+            shutil.rmtree(folder)
+            os.mkdir(folder)
         else:
             folder = input('Enter new folder name:\n')
             if len(folder) == 0:  
