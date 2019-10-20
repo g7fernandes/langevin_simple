@@ -2,7 +2,7 @@
 ! conditions on the cold side will be the reference
 
 module fisica
-
+    implicit none
     contains 
 
     function St_slip(Kn0,T_loc, Tc, N, scorr) result(Cc)
@@ -28,6 +28,7 @@ module fisica
         ! rho é adimensional
         use mod1
 
+        integer :: N
         real(dp) :: T_loc(:), rhof, rho
         real(dp), dimension(N) :: drho
 
@@ -35,18 +36,74 @@ module fisica
 
     end function densitycr
 
-
-    subroutine comp_F(F,GField,x,v,T_loc,Tc,St0,Pe0,Kn0,rhof,N,dt,scorr)
+    function trapz(dx,y,N) result(I)
         use mod1
 
-        real(dp), dimension(:,:), intent(inout) :: F
-        real(dp), dimension(:,:), intent(in) :: x,v
+        real(dp), intent(in), dimension(:,:) :: y
+        real(dp), intent(in) :: dx
+        integer, INTENT(IN) :: N 
+        real(dp), dimension(N) :: I
+        integer :: j, k
+
+        I = 0
+        do j = 1,N 
+            do k = 2, size(y, dim=2)
+                I(j) = I(j) + 0.5*dx*(y(j,k-1) + y(j,k))
+            end do
+        end do
+
+    end function trapz
+
+    subroutine comp_F(F,GField,x,v,vp,T_loc,Tc,St0,Pe0,Kn0,rhof,N,dt,scorr,tauc)
+        use mod1
+
+        integer :: N, i, j
+        real(dp), dimension(:,:,:), intent(inout) :: vp
+        real(dp), dimension(:,:), intent(inout) :: F, tauc
+        real(dp), dimension(:,:), intent(in) :: x,v 
         real(dp), dimension(:), intent(in) :: T_loc, Gfield
         real(dp), intent(in) :: St0, Pe0, Kn0, dt, rhof,Tc 
-        integer :: N
         logical, INTENT(IN) :: scorr
-        real(dp) :: xi(N,2),drho(N), Cc(N)
+        real(dp) :: xi(N,2),drho(N), Cc(N), kernel1(N,20), kernel2(N,20)
+        integer, save :: kcont = 1, aux1 = 0
 
+        
+        tauc(:,kcont) = Kn0*T_loc/sqrt(T_loc*60)
+        kernel1 = 0
+        kernel2 = 0 
+
+        j = kcont - 1
+        do i = 1, 20 
+            if (j < 20) then
+                j = j + 1
+            else 
+                j = 1
+            end if
+
+            if (i > 20 - aux1) then 
+                kernel1(:,i) = (vp(:,j,1)/tauc(:,j))*(exp(-((20-i)*dt)/tauc(:,j)))
+                kernel2(:,i) = (vp(:,j,2)/tauc(:,j))*(exp(-((20-i)*dt)/tauc(:,j)))
+                ! print*, "j =", j
+            end if 
+            
+        end do
+
+        ! print*, "vp = ", vp(:,:,1)
+        ! print*, "kcont = ", kcont
+        ! print*, "tauc =", tauc
+        ! print*, "kernel1 =", kernel1
+        ! print*, "kernel2 =", kernel2
+
+        ! read(*,*)
+        ! print*, "--OK--"
+
+        if (aux1 <= 20) aux1 = aux1 + 1
+
+        if (kcont < 20) then
+            kcont = kcont + 1
+        else 
+            kcont = 1
+        end if
 
         ! Gera numero aleatório e normaliza
         call random_seed()
@@ -65,8 +122,10 @@ module fisica
             ! F(:,1) = (1/(St0*drho/St_slip(Kn0,T_loc,Tc,N,scorr))) * (- v(:,1) + GField(1) + sqrt(6*T_loc/(Pe0*dt))*xi(:,1))
             ! F(:,2) = (1/(St0*drho/St_slip(Kn0,T_loc,Tc,N,scorr))) * (- v(:,2) + GField(2) + sqrt(6*T_loc/(Pe0*dt))*xi(:,2))
 
-            F(:,1) = (1/(St0*drho)) * (- v(:,1)/Cc + GField(1) + sqrt(6*T_loc/(Cc*Pe0*dt))*xi(:,1))
-            F(:,2) = (1/(St0*drho)) * (- v(:,2)/Cc + GField(2) + sqrt(6*T_loc/(Cc*Pe0*dt))*xi(:,2))
+            F(:,1) = (1/(St0*drho)) *  &
+                (- trapz(dt,kernel1,N)/Cc + GField(1) + sqrt(6*T_loc/(Cc*Pe0*dt))*xi(:,1))
+            F(:,2) = (1/(St0*drho)) *  &
+                (- trapz(dt,kernel2,N)/Cc + GField(2) + sqrt(6*T_loc/(Cc*Pe0*dt))*xi(:,2))
 
             ! u1x = (Cc(T_ax)/(St*Ddensity(T_ax)))*(-u0x + (6/(Pe*tau))^.5*ksi(1)*temper/Cc(T_ax));
 
@@ -86,12 +145,14 @@ module fisica
 
     end subroutine comp_F
 
-    subroutine comp_v(F,v,dt,Pe0)
+    subroutine comp_v(F,v,vp,dt,Pe0)
         use mod1
 
+        real(dp), dimension(:,:,:), intent(inout) :: vp
         real(dp), dimension(:,:), intent(inout) :: v
         real(dp), dimension(:,:), intent(in) :: F
         real(dp), intent(in) :: dt,Pe0
+        integer, save :: kcont = 1
 
         if (Pe0 > 0) then
             v = v + F*dt 
@@ -99,6 +160,16 @@ module fisica
         else 
             v = F*dt
         end if 
+
+        vp(:,kcont,1) = v (:,1)
+        vp(:,kcont,2) = v (:,2)
+
+        if (kcont < 20) then
+            kcont = kcont + 1
+        else 
+            kcont = 1
+        end if
+
     end subroutine comp_v
 
 
@@ -109,6 +180,7 @@ module fisica
         real(dp), intent(in) :: dt,dimx,dimy
         integer, intent(in) :: N 
         character, intent(in) :: wall(4)
+        integer :: i
 
         x = x + v*dt 
         ! print*, "v*dt =", v*dt
@@ -191,7 +263,8 @@ program main
 
     ! Variables
     real(dp) :: Pe0, St0, Th, Tc, Kn0, dt, t_fim, t, rhof, dimx, dimy, Gfield(2),x0(2),v0(2),start,finish
-    real(dp),allocatable, dimension(:,:) :: v, x, F
+    real(dp), allocatable, dimension(:,:) :: v, x, F, tauc
+    real(dp), allocatable, dimension(:,:,:) :: vp
     real(dp), allocatable, dimension(:) :: T_loc
     integer :: N, nimpre, i, ic1, cpu_countrate
     integer, allocatable :: interv(:)
@@ -203,7 +276,7 @@ program main
     ! Auxiliary variables
     integer :: step, jprint
     
-
+    
     ! Leitura do arquivo de configuração
     call CFG_add(my_cfg, "global%N",1,&
     "number of particles")
@@ -265,7 +338,9 @@ program main
 
 
 
-    allocate(interv(nimpre),T_loc(N),x(N,2),v(N,2),F(N,2))
+    allocate(interv(nimpre),T_loc(N),x(N,2),v(N,2),F(N,2),tauc(N,20), vp(N,20,2))
+    vp = 0
+
     if (x0(1) < 0) then
         call random_seed()
         call random_number(x)
@@ -303,8 +378,8 @@ program main
     ! print*, interv
     T_loc = Tc + x(:,1)*((Th-Tc)/dimx)
     do while (t < t_fim)
-        call comp_F(F,Gfield,x,v,T_loc,Tc,St0,Pe0,Kn0,rhof,N,dt,scorr)
-        call comp_v(F,v,dt,Pe0)
+        call comp_F(F,Gfield,x,v,vp,T_loc,Tc,St0,Pe0,Kn0,rhof,N,dt,scorr,tauc)
+        call comp_v(F,v, vp,dt,Pe0)
         call comp_x(x,v,dimx,dimy,N,dt,wall) 
 
         T_loc = Tc + x(:,1)*((Th-Tc)/dimx)

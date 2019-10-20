@@ -16,9 +16,12 @@ module saida
         character(4) :: extensao = '.csv', passo
         real(dp) :: time
         real(dp), save :: timep, etc, dtimepp
-        character(LEN=*),parameter :: fmt5 = '(f32.16, ", ",f32.16, ", ",f32.16, ", ",f32.16, ", ",f32.16 )'
-        character(LEN=*),parameter :: fmt6 = '(i10, ", ",i10, ", ",f32.16, ", ",f32.16, ", ",f32.16, ", ",f32.16 )'
-        character(LEN=*),parameter :: fmt7 = '(f32.16, ", ",f32.16, ", ",f32.16, ", ",f32.16, ", ",f32.16, ", ",f32.16, ", ",f32.16 )'
+        character(LEN=*),parameter :: fmt5 = &
+        '(f32.16, ", ",f32.16, ", ",f32.16, ", ",f32.16, ", ",f32.16 )'
+        character(LEN=*),parameter :: fmt6 = & 
+        '(i10, ", ",i10, ", ",f32.16, ", ",f32.16, ", ",f32.16, ", ",f32.16 )'
+        character(LEN=*),parameter :: fmt7 = & 
+        '(f32.16, ", ",f32.16, ", ",f32.16, ", ",f32.16, ", ",f32.16, ", ",f32.16, ", ",f32.16 )'
 
         laux = .false.
         if (present(concat0)) laux = concat0
